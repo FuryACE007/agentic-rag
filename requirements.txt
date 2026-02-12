@@ -1,4 +1,4 @@
-# SquadSense Dependencies
+# Nexus Dependencies
 # =======================
 
 # --- Orchestration (Google ADK) ---

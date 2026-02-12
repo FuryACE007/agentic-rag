@@ -1,5 +1,5 @@
 """
-vector_store.py — ChromaDB wrapper for SquadSense knowledge persistence.
+vector_store.py — ChromaDB wrapper for Nexus knowledge persistence.
 
 Manages collections per skill domain, handles upserting semantic chunks
 and querying with metadata filters.

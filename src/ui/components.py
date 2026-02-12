@@ -1,5 +1,5 @@
 """
-components.py — Reusable Streamlit UI widgets for SquadSense.
+components.py — Reusable Streamlit UI widgets for Nexus.
 
 All components are self-documenting with clear visual cues.
 """
@@ -200,7 +200,7 @@ GLOBAL_CSS = """
 # ---------------------------------------------------------------------------
 
 def app_header() -> None:
-    """Render the SquadSense application header in the sidebar."""
+    """Render the Nexus application header in the sidebar."""
     st.sidebar.markdown(
         """
         <div style="text-align: center; padding: 0.5rem 0 1rem;">
@@ -211,7 +211,7 @@ def app_header() -> None:
                 -webkit-text-fill-color: transparent;
                 font-size: 1.4rem;
                 font-weight: 800;
-            ">SquadSense</div>
+            ">Nexus</div>
             <div style="color: #6b7199; font-size: 0.75rem; letter-spacing: 1px;">
                 SKILL-AWARE AI ASSISTANT
             </div>
@@ -230,7 +230,7 @@ def welcome_hero() -> None:
     st.markdown(
         """
         <div class="hero-section">
-            <div class="hero-title">🧠 SquadSense</div>
+            <div class="hero-title">🧠 Nexus</div>
             <div class="hero-subtitle">
                 Your codebase, understood. Ask anything.
             </div>
@@ -293,7 +293,7 @@ def welcome_hero() -> None:
     with st.expander("🔍 How does it work?", expanded=False):
         st.markdown(
             """
-            **SquadSense** uses an **LLM Council** — three AI agents that each specialize in a different area:
+            **Nexus** uses an **LLM Council** — three AI agents that each specialize in a different area:
 
             | Agent | Focus |
             |-------|-------|

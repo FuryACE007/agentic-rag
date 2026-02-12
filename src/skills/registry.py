@@ -1,5 +1,5 @@
 """
-registry.py — Skill manifest manager for SquadSense.
+registry.py — Skill manifest manager for Nexus.
 
 Scans the manifests directory for *_SKILLS.md files, provides loading,
 saving, and listing functionality.

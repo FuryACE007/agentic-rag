@@ -1,4 +1,4 @@
-# 🧠 SquadSense — Skill-Aware AI Developer Assistant
+# 🧠 Nexus — Skill-Aware AI Developer Assistant
 
 An enterprise **Agentic RAG** system that ingests codebases and documentation, uses an **LLM Council** (Architect · Domain · Quality agents) to auto-generate a **SKILLS.md** manifest, and then provides **Skill-Aware Chat** so developers can query the AI using the _specific_ patterns, rules, and entities of a chosen skill domain.
 
@@ -19,7 +19,7 @@ An enterprise **Agentic RAG** system that ingests codebases and documentation, u
 ### 2. Clone & Install
 
 ```bash
-cd squad-sense/squadsense
+cd nexus/nexus
 
 # Create virtual environment
 python -m venv .venv
@@ -90,7 +90,7 @@ adk web
 ## Project Structure
 
 ```
-squadsense/
+nexus/
 ├── .env                        # API Keys
 ├── requirements.txt            # Dependencies
 ├── main.py                     # FastAPI entrypoint

@@ -1,5 +1,5 @@
 """
-app.py — Main Streamlit entrypoint for SquadSense.
+app.py — Main Streamlit entrypoint for Nexus.
 
 A self-guiding UI with two modes:
   - Discovery: Ingest code/docs → Generate a Skill Manifest via LLM Council
@@ -43,7 +43,7 @@ from src.ui.components import (
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="SquadSense — Skill-Aware AI Assistant",
+    page_title="Nexus — Skill-Aware AI Assistant",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -332,7 +332,7 @@ def chat_interface(skill_hat: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """SquadSense main application."""
+    """Nexus main application."""
 
     # --- Sidebar ---
     app_header()

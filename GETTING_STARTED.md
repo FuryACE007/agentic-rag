@@ -1,4 +1,4 @@
-# SquadSense — Getting Started Guide
+# Nexus — Getting Started Guide
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ Go to your GitHub repo (e.g., your Java/TypeScript project) and either:
 Then **copy only the source files** you care about into `data/code/`:
 
 ```
-squadsense/
+nexus/
 └── data/
     └── code/
         ├── StakingService.java          ← copy these in
@@ -58,7 +58,7 @@ Go to Confluence and export the relevant pages:
 Place them in `data/docs/`:
 
 ```
-squadsense/
+nexus/
 └── data/
     └── docs/
         ├── staking-overview.md          ← your Confluence/wiki content
@@ -78,7 +78,7 @@ squadsense/
 ### Your Final Data Folder Should Look Like:
 
 ```
-squadsense/
+nexus/
 └── data/
     ├── code/                    ← Your Java/TS source files
     │   ├── StakingService.java
@@ -97,7 +97,7 @@ squadsense/
 ### Step 1: Create Virtual Environment & Install
 
 ```bash
-cd /Users/aeres/Desktop/projects/squad-sense/squadsense
+cd /Users/aeres/Desktop/projects/nexus/nexus
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -149,7 +149,7 @@ You have **two options** (they do the same thing, just different interfaces):
 ### Option A: Test via Streamlit UI (Recommended for First Time)
 
 ```bash
-cd /Users/aeres/Desktop/projects/squad-sense/squadsense
+cd /Users/aeres/Desktop/projects/nexus/nexus
 source .venv/bin/activate
 streamlit run src/ui/app.py
 ```
@@ -174,7 +174,7 @@ This opens a browser at `http://localhost:8501`. Then:
 ### Option B: Test via API (Developer Style)
 
 ```bash
-cd /Users/aeres/Desktop/projects/squad-sense/squadsense
+cd /Users/aeres/Desktop/projects/nexus/nexus
 source .venv/bin/activate
 uvicorn main:app --reload --port 8000
 ```
@@ -349,7 +349,7 @@ Then switch between them in the Interaction Mode dropdown. Each one is a differe
 
 ## 6. Interacting as a Developer
 
-As a **developer** working on SquadSense itself, here's what you need to know:
+As a **developer** working on Nexus itself, here's what you need to know:
 
 ### The Two Entry Points:
 
@@ -500,7 +500,7 @@ Let's say you put 10 Java files and 3 Markdown docs in `data/`:
 
 ### Key Insight: Why This Is Better Than ChatGPT
 
-Regular ChatGPT doesn't know YOUR codebase. SquadSense:
+Regular ChatGPT doesn't know YOUR codebase. Nexus:
 
 1. **Knows your patterns** — "In this codebase, we use the Repository pattern with..."
 2. **Knows your rules** — "Staking amounts must be validated using the `StakingValidator.validate()` method..."
@@ -513,7 +513,7 @@ Regular ChatGPT doesn't know YOUR codebase. SquadSense:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    SQUADSENSE QUICK REF                    │
+│                    NEXUS QUICK REF                    │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │  SETUP:                                                  │

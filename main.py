@@ -1,5 +1,5 @@
 """
-main.py — FastAPI entrypoint for SquadSense.
+main.py — FastAPI entrypoint for Nexus.
 
 Fully documented REST API with Swagger UI at /docs and ReDoc at /redoc.
 
@@ -95,10 +95,10 @@ tags_metadata = [
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="🧠 SquadSense API",
+    title="🧠 Nexus API",
     description=(
         "**Skill-Aware AI Developer Assistant** — An enterprise Agentic RAG system.\n\n"
-        "SquadSense analyzes your codebase using an LLM Council (Architect, Domain Expert, Quality Agent) "
+        "Nexus analyzes your codebase using an LLM Council (Architect, Domain Expert, Quality Agent) "
         "to generate structured **Skill Manifests**. Developers can then chat with the AI using a specific "
         '"Skill Hat" to get answers grounded in their codebase\'s patterns, rules, and standards.\n\n'
         "---\n\n"
@@ -122,7 +122,7 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_tags=tags_metadata,
     contact={
-        "name": "SquadSense",
+        "name": "Nexus",
     },
     license_info={
         "name": "MIT",
@@ -568,7 +568,7 @@ async def startup_event() -> None:
 
     print()
     print("=" * 60)
-    print("  🧠 SquadSense API — v0.1.0")
+    print("  🧠 Nexus API — v0.1.0")
     print("=" * 60)
     print()
     print("  API Keys:")

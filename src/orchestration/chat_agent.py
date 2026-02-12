@@ -27,7 +27,7 @@ from src.skills.registry import SkillRegistry
 # System Prompt Template
 # ---------------------------------------------------------------------------
 
-SKILL_AWARE_INSTRUCTION_TEMPLATE = """You are **SquadSense**, a Skill-Aware AI Developer Assistant.
+SKILL_AWARE_INSTRUCTION_TEMPLATE = """You are **Nexus**, a Skill-Aware AI Developer Assistant.
 
 You are currently operating in **{skill_hat} Mode**. You must answer all questions
 using the specific patterns, business rules, entities, and coding standards defined
@@ -94,7 +94,7 @@ def create_skill_aware_agent(
     )
 
     return Agent(
-        name=f"squadsense_{skill_hat.lower()}_agent",
+        name=f"nexus_{skill_hat.lower()}_agent",
         model=config.chat_model,
         instruction=instruction,
         description=f"Skill-Aware Developer Assistant for the {skill_hat} domain.",

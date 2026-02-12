@@ -28,7 +28,7 @@ class ModelProvider(str, Enum):
 
 
 class AgentRole(str, Enum):
-    """Roles within the SquadSense pipeline."""
+    """Roles within the Nexus pipeline."""
     ARCHITECT = "architect"
     DOMAIN_EXPERT = "domain_expert"
     QUALITY = "quality"
@@ -60,7 +60,7 @@ class LLMConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Configuration for a SquadSense agent."""
+    """Configuration for a Nexus agent."""
     name: str
     role: AgentRole
     model_id: str

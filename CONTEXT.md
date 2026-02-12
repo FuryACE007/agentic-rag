@@ -1,12 +1,12 @@
-# SquadSense — System Context & Architecture Guide
+# Nexus — System Context & Architecture Guide
 
-**For AI Assistants:** This document provides complete context about the SquadSense codebase, its architecture, design decisions, and implementation details.
+**For AI Assistants:** This document provides complete context about the Nexus codebase, its architecture, design decisions, and implementation details.
 
 ---
 
 ## 🎯 Project Vision
 
-**SquadSense** is a Skill-Aware AI Developer Assistant built as an enterprise Agentic RAG (Retrieval-Augmented Generation) system. It operates in two distinct phases:
+**Nexus** is a Skill-Aware AI Developer Assistant built as an enterprise Agentic RAG (Retrieval-Augmented Generation) system. It operates in two distinct phases:
 
 ### Phase 1: Discovery (The LLM Council)
 
@@ -78,7 +78,7 @@
 ## 📂 Project Structure
 
 ```
-squadsense/
+nexus/
 ├── .env                        # API keys (GOOGLE_API_KEY, ANTHROPIC_API_KEY, etc.)
 ├── .gitignore                  # Excludes venv, chromadb_store, __pycache__
 ├── requirements.txt            # All dependencies with version pins
@@ -417,7 +417,7 @@ squadsense/
 
 ```bash
 # 1. Setup
-cd squad-sense/squadsense
+cd nexus/nexus
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
