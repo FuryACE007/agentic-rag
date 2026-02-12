@@ -118,7 +118,7 @@ def _check_data_folder(data_path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def run_discovery(data_path: str, skill_name: str) -> None:
-    """Execute the full discovery pipeline with detailed progress."""
+    """Execute the full discovery pipeline from local data folder."""
     from src.ingestion.cast_parser import parse_file
     from src.ingestion.chunker import SemanticChunkerPipeline
     from src.ingestion.connectors import ConfluenceConnector, GitHubConnector
@@ -275,6 +275,194 @@ def run_discovery(data_path: str, skill_name: str) -> None:
                 st.error(f"**{resp.agent_name}:** {resp.error}")
 
 
+def run_discovery_repo(repos: list[dict], skill_name: str) -> None:
+    """Execute the full discovery pipeline by cloning one or more Git repositories."""
+    from src.ingestion.cast_parser import parse_file
+    from src.ingestion.chunker import SemanticChunkerPipeline
+    from src.ingestion.connectors import MultiRepoConnector
+    from src.knowledge.vector_store import VectorStore
+    from src.orchestration.council_agents import run_council
+
+    progress = st.progress(0)
+    status_text = st.empty()
+
+    repo_count = len(repos)
+    label = f"{repo_count} repo(s)" if repo_count > 1 else f"`{repos[0]['url']}`"
+
+    # --- Step 1: Clone ---
+    status_text.markdown(f"**Step 1/6** — 📥 Cloning {label}...")
+    progress.progress(5)
+
+    connector = MultiRepoConnector(repos=repos)
+
+    clone_results = connector.clone_all()
+    succeeded = [r for r in clone_results if r["success"]]
+    failed = [r for r in clone_results if not r["success"]]
+
+    if not succeeded:
+        errors = "\n".join(f"- `{r['repo_url']}`: {r['error']}" for r in failed)
+        st.error(
+            f"❌ **Failed to clone all repositories**\n\n{errors}\n\n"
+            "**Common causes:**\n"
+            "- URL is incorrect or repo doesn't exist\n"
+            "- Private repo: set `GITHUB_TOKEN` in `.env` or use SSH URL\n"
+            "- Network issue"
+        )
+        connector.cleanup()
+        return
+
+    # Show clone results
+    stats = connector.get_combined_stats()
+    repo_line_parts = []
+    for r in clone_results:
+        color = "#48c78e" if r["success"] else "#ff6464"
+        icon = "✅" if r["success"] else "❌"
+        if r["success"]:
+            detail = str(r["stats"]["total_files"]) + " files"
+        else:
+            detail = str(r.get("error", "failed"))[:60]
+        repo_line_parts.append(
+            f"<div style='color: {color}; font-size: 0.85rem;'>"  # noqa
+            f"{icon} {r['repo_name']} — {detail}</div>"
+        )
+    repo_lines = "".join(repo_line_parts)
+    st.markdown(
+        f"""
+        <div style="background: rgba(72,199,142,0.08); border: 1px solid rgba(72,199,142,0.2);
+             border-radius: 12px; padding: 14px 18px; margin-bottom: 1rem;">
+            <div style="color: #48c78e; font-weight: 600; margin-bottom: 6px;">
+                📂 Cloned {len(succeeded)}/{repo_count} repos — {stats['total_files']} total files
+            </div>
+            {repo_lines}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if failed:
+        st.warning(
+            f"⚠️ {len(failed)} repo(s) failed to clone and will be skipped. "
+            "The pipeline will continue with the successfully cloned repos."
+        )
+    progress.progress(15)
+
+    try:
+        # --- Step 2: Scan ---
+        status_text.markdown("**Step 2/6** — 🔎 Scanning for code and documentation files...")
+        progress.progress(20)
+
+        code_docs, doc_docs, _ = _run_async(connector.fetch_all())
+
+        if not code_docs and not doc_docs:
+            st.error(
+                "❌ **No supported files found** across the cloned repositories.\n\n"
+                "Supported code: `.java`, `.ts`, `.tsx`, `.py`, `.js`, `.jsx`, `.kt`, `.go`, `.rs`\n"
+                "Supported docs: `.md`, `.html`, `.txt`, `.rst`, `.adoc`\n\n"
+                "Try specifying a subdirectory if this is a monorepo."
+            )
+            return
+
+        st.info(f"📄 Found **{len(code_docs)}** code files and **{len(doc_docs)}** doc files.")
+        progress.progress(30)
+
+        # --- Step 3: Parse ---
+        status_text.markdown("**Step 3/6** — 🌳 Parsing code with Tree-sitter...")
+        progress.progress(35)
+
+        all_code_chunks = []
+        for doc in code_docs:
+            file_path = doc.metadata.get("local_path", doc.source)
+            chunks = parse_file(doc.content, file_path)
+            all_code_chunks.extend(chunks)
+
+        st.info(f"🔍 Extracted **{len(all_code_chunks)}** code units.")
+        progress.progress(45)
+
+        # --- Step 4: Chunk ---
+        status_text.markdown("**Step 4/6** — 📦 Creating semantic chunks...")
+        progress.progress(50)
+
+        chunker = SemanticChunkerPipeline()
+        semantic_code = chunker.chunk_code(all_code_chunks)
+        semantic_docs = []
+        for doc in doc_docs:
+            semantic_docs.extend(chunker.chunk_document(doc.content, doc.source, doc.file_type))
+
+        all_semantic = semantic_code + semantic_docs
+        st.info(
+            f"📊 Created **{len(all_semantic)}** semantic chunks "
+            f"({len(semantic_code)} code, {len(semantic_docs)} docs)."
+        )
+        progress.progress(60)
+
+        # --- Step 5: Embed ---
+        status_text.markdown("**Step 5/6** — 💾 Embedding in vector database...")
+        progress.progress(65)
+
+        store = VectorStore()
+        chunks_to_upsert = [
+            {"id": c.id, "content": c.content, "metadata": c.metadata}
+            for c in all_semantic
+        ]
+        stored = store.upsert_chunks(skill_name, chunks_to_upsert)
+        st.info(f"✅ Stored **{stored}** chunks in ChromaDB.")
+        progress.progress(75)
+
+        # --- Step 6: LLM Council ---
+        status_text.markdown(
+            "**Step 6/6** — 🤖 Running LLM Council... _This takes ~60 seconds._"
+        )
+        progress.progress(80)
+
+        combined_text = "\n\n---\n\n".join(c.content for c in all_semantic[:50])
+        result = _run_async(run_council(combined_text, skill_name))
+        result.chunks_ingested = stored
+
+        progress.progress(100)
+        status_text.markdown("**✨ Discovery complete!**")
+
+        # --- Results ---
+        if result.skills_md_content:
+            st.session_state.discovery_complete = True
+            st.session_state.last_discovery_skill = skill_name
+
+            st.markdown(
+                f"""
+                <div style="background: rgba(72,199,142,0.1); border: 1px solid rgba(72,199,142,0.3);
+                     border-radius: 14px; padding: 18px 22px; margin: 1rem 0;">
+                    <div style="color: #48c78e; font-weight: 700; font-size: 1.1rem; margin-bottom: 6px;">
+                        🎉 Skill "{skill_name.upper()}" Generated Successfully!
+                    </div>
+                    <div style="color: #9cbfac; font-size: 0.9rem;">
+                        Manifest saved to <code>src/skills/manifests/{skill_name.upper()}_SKILLS.md</code><br>
+                        Now select <strong>{skill_name.upper()}</strong> in Chat Mode to start asking questions.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("📋 View Generated SKILLS.md", expanded=False):
+                st.markdown(result.skills_md_content)
+
+            with st.expander("🔍 Agent Analysis Details", expanded=False):
+                for resp in result.agent_responses:
+                    if resp.success:
+                        st.markdown(f"### {resp.agent_name.replace('_', ' ').title()}")
+                        st.markdown(resp.content)
+                        st.markdown("---")
+                    elif resp.error:
+                        st.warning(f"⚠️ **{resp.agent_name}** error: {resp.error}")
+        else:
+            st.error("❌ Failed to generate SKILLS.md. Check agent details below.")
+            for resp in (result.agent_responses or []):
+                if resp.error:
+                    st.error(f"**{resp.agent_name}:** {resp.error}")
+
+    finally:
+        connector.cleanup()
+
+
 # ---------------------------------------------------------------------------
 # Chat Interface
 # ---------------------------------------------------------------------------
@@ -349,7 +537,7 @@ def main() -> None:
     has_data = data_info["has_any"]
     has_skills = len(available_skills) > 0
 
-    step_indicator(1, "Add Your Data", f"{data_info['code_count']} code, {data_info['doc_count']} docs found", done=has_data)
+    step_indicator(1, "Provide Your Code", f"{data_info['code_count']} code, {data_info['doc_count']} docs found" if has_data else "Paste a repo URL or add local files", done=has_data)
     step_indicator(2, "Generate a Skill", f"{len(available_skills)} skill(s) ready" if has_skills else "Run Discovery below", done=has_skills, active=has_data and not has_skills)
     step_indicator(3, "Start Chatting", "Select a Skill Hat below" if has_skills else "Waiting for Step 2", done=False, active=has_skills)
 
@@ -370,8 +558,124 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
-    # Discovery panel
-    discovery_result = discovery_panel(has_data=has_data)
+    # --- Discovery Panel ---
+    st.sidebar.markdown(
+        """
+        <div style="margin: 0.5rem 0 0.3rem;">
+            <span style="color: #e0e4f0; font-weight: 700; font-size: 1rem;">
+                🔍 Discovery Mode
+            </span>
+            <span style="color: #6b7199; font-size: 0.78rem; display: block; margin-top: 2px;">
+                Analyze your code & docs to generate a Skill Manifest
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Source toggle: repo URL vs local folder
+    source_mode = st.sidebar.radio(
+        "📦 Data source",
+        options=["Git Repo URL", "Local Folder"],
+        horizontal=True,
+        help="Choose how to provide your code. Repo URL is recommended — just paste and go.",
+    )
+
+    discovery_trigger = None
+
+    if source_mode == "Git Repo URL":
+        repo_urls_raw = st.sidebar.text_area(
+            "🔗 Repository URL(s)",
+            value="",
+            placeholder="https://github.com/org/backend\nhttps://github.com/org/frontend\ngit@github.com:org/shared-lib.git",
+            help="One repo URL per line. Supports HTTPS and SSH. For private repos, set GITHUB_TOKEN in .env.",
+            height=100,
+        )
+        branch = st.sidebar.text_input(
+            "🌿 Branch (optional, applies to all repos)",
+            value="",
+            placeholder="main (leave empty for default)",
+            help="Leave empty to use each repo's default branch.",
+        )
+        subdirectory = st.sidebar.text_input(
+            "📁 Subdirectory (optional, applies to all repos)",
+            value="",
+            placeholder="src/main/java",
+            help="Focus on a specific folder in each repo.",
+        )
+        skill_name = st.sidebar.text_input(
+            "🏷️ Skill name",
+            value="",
+            placeholder="e.g. staking, auth, payments",
+            help="Name for this skill domain.",
+            key="skill_name_repo",
+        )
+
+        # Parse URLs
+        parsed_urls = [u.strip() for u in repo_urls_raw.strip().splitlines() if u.strip()]
+        url_count = len(parsed_urls)
+
+        if not parsed_urls:
+            hint_box("Paste one or more repo URLs above (one per line).")
+        elif not skill_name.strip():
+            hint_box("Enter a skill name like **staking** or **auth**.")
+        elif url_count > 1:
+            st.sidebar.markdown(
+                f"<div style='color: #667eea; font-size: 0.82rem; margin-bottom: 6px;'>"
+                f"\u2728 {url_count} repos will be analyzed together</div>",
+                unsafe_allow_html=True,
+            )
+
+        clicked = st.sidebar.button(
+            f"\u26a1 Clone {'& Merge ' if url_count > 1 else ''}& Generate Skill",
+            type="primary",
+            use_container_width=True,
+            disabled=not (parsed_urls and skill_name.strip()),
+        )
+        if clicked:
+            repo_configs = [
+                {
+                    "url": url,
+                    "branch": branch.strip(),
+                    "subdirectory": subdirectory.strip(),
+                }
+                for url in parsed_urls
+            ]
+            discovery_trigger = {
+                "mode": "repo",
+                "repos": repo_configs,
+                "skill_name": skill_name.strip(),
+            }
+
+    else:  # Local Folder
+        data_path = st.sidebar.text_input(
+            "📁 Data folder",
+            value="data",
+            help="Path to folder containing `code/` and `docs/` subfolders.",
+        )
+        skill_name = st.sidebar.text_input(
+            "🏷️ Skill name",
+            value="",
+            placeholder="e.g. staking, auth, payments",
+            help="Name for this skill domain.",
+            key="skill_name_local",
+        )
+
+        if not skill_name.strip():
+            hint_box("Enter a skill name like **staking** or **auth**.")
+
+        clicked = st.sidebar.button(
+            "\u26a1 Ingest & Generate Skill",
+            type="primary",
+            use_container_width=True,
+            disabled=not skill_name.strip(),
+        )
+        if clicked:
+            discovery_trigger = {
+                "mode": "local",
+                "data_path": data_path.strip(),
+                "skill_name": skill_name.strip(),
+            }
 
     # Interaction panel
     selected_skill = interaction_panel(available_skills)
@@ -387,11 +691,17 @@ def main() -> None:
     # --- Main Area ---
 
     # Handle discovery trigger
-    if discovery_result:
-        run_discovery(
-            data_path=discovery_result["data_path"],
-            skill_name=discovery_result["skill_name"],
-        )
+    if discovery_trigger:
+        if discovery_trigger["mode"] == "repo":
+            run_discovery_repo(
+                repos=discovery_trigger["repos"],
+                skill_name=discovery_trigger["skill_name"],
+            )
+        else:
+            run_discovery(
+                data_path=discovery_trigger["data_path"],
+                skill_name=discovery_trigger["skill_name"],
+            )
 
     # Handle chat or welcome
     elif selected_skill:

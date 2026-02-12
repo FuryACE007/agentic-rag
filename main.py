@@ -34,7 +34,7 @@ load_dotenv()
 
 from src.ingestion.cast_parser import parse_file
 from src.ingestion.chunker import SemanticChunkerPipeline
-from src.ingestion.connectors import ConfluenceConnector, GitHubConnector
+from src.ingestion.connectors import ConfluenceConnector, GitHubConnector, MultiRepoConnector
 from src.knowledge.vector_store import VectorStore
 from src.orchestration.adk_core import (
     AgentResponse,
@@ -174,6 +174,67 @@ class DiscoverRequest(BaseModel):
             "examples": [
                 {
                     "data_path": "data",
+                    "skill_name": "staking",
+                    "code_extensions": [".java", ".ts", ".tsx"],
+                }
+            ]
+        }
+    }
+
+class RepoInput(BaseModel):
+    """Configuration for a single repository to analyze."""
+
+    url: str = Field(
+        ...,
+        description=(
+            "Full Git clone URL. Supports HTTPS and SSH.\n\n"
+            "Examples:\n"
+            "- `https://github.com/owner/repo`\n"
+            "- `git@github.com:owner/repo.git`"
+        ),
+        json_schema_extra={"examples": ["https://github.com/owner/my-app"]},
+    )
+    branch: str = Field(
+        default="",
+        description="Branch to clone. Leave empty for the default branch.",
+    )
+    subdirectory: str = Field(
+        default="",
+        description="Optional subdirectory to focus on (e.g., 'src/main/java' for monorepos).",
+    )
+
+
+class DiscoverRepoRequest(BaseModel):
+    """Request body to trigger Discovery from one or more Git repositories."""
+
+    repos: list[RepoInput] = Field(
+        ...,
+        description=(
+            "One or more Git repositories to analyze. All repos are cloned, "
+            "scanned, and their files merged before running the LLM Council."
+        ),
+        min_length=1,
+    )
+    skill_name: str = Field(
+        ...,
+        description="Name for the generated Skill Manifest (e.g., 'staking', 'auth').",
+        min_length=1,
+        max_length=50,
+        json_schema_extra={"examples": ["staking"]},
+    )
+    code_extensions: list[str] = Field(
+        default_factory=lambda: [".java", ".ts", ".tsx"],
+        description="Code file extensions to include.",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "repos": [
+                        {"url": "https://github.com/org/backend", "branch": "main"},
+                        {"url": "https://github.com/org/shared-lib"},
+                    ],
                     "skill_name": "staking",
                     "code_extensions": [".java", ".ts", ".tsx"],
                 }
@@ -506,6 +567,135 @@ async def discover(request: DiscoverRequest) -> DiscoveryResult:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Discovery pipeline error: {str(e)}")
+
+
+@app.post(
+    "/api/discover-repo",
+    response_model=DiscoveryResult,
+    tags=["Discovery"],
+    summary="Discover from Git Repo URL(s) ⭐",
+    description=(
+        "**Recommended method.** Provide one or more Git repository URLs and Nexus will:\n\n"
+        "1. **Clone** each repo (shallow, depth=1 for speed)\n"
+        "2. **Scan** all repos for code and documentation files\n"
+        "3. **Merge** files from all repos into a single analysis\n"
+        "4. **Parse** code with Tree-sitter\n"
+        "5. **Chunk & embed** into ChromaDB\n"
+        "6. **Run the LLM Council** (Architect, Domain Expert, Quality Agent)\n"
+        "7. **Generate** a structured SKILLS.md manifest\n\n"
+        "### ⏱️ Expected Duration: 60–120 seconds\n\n"
+        "### Multi-Repo Support:\n"
+        "Combine a backend + frontend + shared library into one skill:\n"
+        "```json\n"
+        '{\n'
+        '  "repos": [\n'
+        '    {"url": "https://github.com/org/backend", "branch": "main"},\n'
+        '    {"url": "https://github.com/org/frontend", "subdirectory": "src"},\n'
+        '    {"url": "git@github.com:org/shared-lib.git"}\n'
+        '  ],\n'
+        '  "skill_name": "staking"\n'
+        '}\n'
+        "```\n\n"
+        "### Private Repos:\n"
+        "- **SSH**: Use `git@github.com:owner/repo.git` (requires SSH keys on server)\n"
+        "- **HTTPS + PAT**: Set `GITHUB_TOKEN` in `.env` — it is auto-injected into HTTPS URLs\n\n"
+        "All cloned repos are automatically cleaned up after processing."
+    ),
+    responses={
+        400: {"model": ErrorResponse, "description": "Clone failed or no files found."},
+        500: {"model": ErrorResponse, "description": "Pipeline error."},
+    },
+)
+async def discover_repo(request: DiscoverRepoRequest) -> DiscoveryResult:
+    connector: MultiRepoConnector | None = None
+    try:
+        # --- Step 1: Clone all repos ---
+        repo_configs = [
+            {
+                "url": r.url,
+                "branch": r.branch,
+                "subdirectory": r.subdirectory,
+            }
+            for r in request.repos
+        ]
+        connector = MultiRepoConnector(repos=repo_configs)
+
+        clone_results = connector.clone_all()
+
+        # Check if any repos succeeded
+        succeeded = [r for r in clone_results if r["success"]]
+        failed = [r for r in clone_results if not r["success"]]
+
+        if not succeeded:
+            errors = "; ".join(f"{r['repo_url']}: {r['error']}" for r in failed)
+            raise HTTPException(
+                status_code=400,
+                detail=f"All repos failed to clone. Errors: {errors}",
+            )
+
+        # --- Step 2: Scan files from all repos ---
+        code_extensions = {
+            ext if ext.startswith(".") else f".{ext}"
+            for ext in request.code_extensions
+        }
+        code_docs, doc_docs, _ = await connector.fetch_all(
+            code_extensions=code_extensions,
+        )
+
+        if not code_docs and not doc_docs:
+            stats = connector.get_combined_stats()
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No code or doc files found across {stats['repos_cloned']} repo(s). "
+                    f"Total files scanned: {stats['total_files']}. "
+                    "Try adjusting `code_extensions` or `subdirectory`."
+                ),
+            )
+
+        # --- Step 3: Parse ---
+        all_code_chunks = []
+        for doc in code_docs:
+            file_path = doc.metadata.get("local_path", doc.source)
+            chunks = parse_file(doc.content, file_path)
+            all_code_chunks.extend(chunks)
+
+        # --- Step 4: Chunk ---
+        chunker = SemanticChunkerPipeline()
+        semantic_code = chunker.chunk_code(all_code_chunks)
+        semantic_docs = []
+        for doc in doc_docs:
+            semantic_docs.extend(
+                chunker.chunk_document(doc.content, doc.source, doc.file_type)
+            )
+
+        all_semantic = semantic_code + semantic_docs
+
+        # --- Step 5: Embed in ChromaDB ---
+        store = VectorStore()
+        chunks_to_upsert = [
+            {"id": c.id, "content": c.content, "metadata": c.metadata}
+            for c in all_semantic
+        ]
+        stored = store.upsert_chunks(request.skill_name, chunks_to_upsert)
+
+        # --- Step 6: Run Council ---
+        combined_text = "\n\n---\n\n".join(
+            c.content for c in all_semantic[:50]
+        )
+        result = await run_council(combined_text, request.skill_name)
+        result.chunks_ingested = stored
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Repo discovery error: {str(e)}")
+    finally:
+        # Always clean up all cloned repos
+        if connector:
+            connector.cleanup()
 
 
 # ---------------------------------------------------------------------------
