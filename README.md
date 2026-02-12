@@ -6,19 +6,8 @@ An enterprise **Agentic RAG** system that ingests codebases and documentation, u
 
 ## Architecture Overview
 
-```
-┌─────────────┐     ┌────────────────┐     ┌──────────────────┐
-│  Streamlit   │────▶│   FastAPI       │────▶│  Google ADK      │
-│  Chat UI     │◀────│   Backend      │◀────│  Agent Pipeline  │
-└─────────────┘     └────────────────┘     └──────────────────┘
-                                                    │
-                          ┌─────────────────────────┼──────────────────┐
-                          ▼                         ▼                  ▼
-                  ┌──────────────┐     ┌──────────────────┐   ┌──────────────┐
-                  │  Tree-sitter │     │     ChromaDB      │   │   LLM APIs   │
-                  │  cAST Parser │     │   Vector Store     │   │ Gemini/Claude│
-                  └──────────────┘     └──────────────────┘   └──────────────┘
-```
+<img width="8192" height="7799" alt="sqdsense-2026-02-11-121333" src="https://github.com/user-attachments/assets/cd8c9188-1159-45b1-b1f8-f04d22d80d21" />
+
 
 ## Quick Start
 
